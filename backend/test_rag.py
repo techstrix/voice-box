@@ -1,6 +1,15 @@
 from rag import upsert_company_doc, retrieve_context
 import time
 
+import pytest
+
+from rag import _get_index
+
+try:
+    _get_index()
+except Exception:
+    pytest.skip("Pinecone not configured (PINECONE_API_KEY)", allow_module_level=True)
+
 # 1. Define dummy data for a test company
 TEST_COMPANY_ID = "acme-corp-123"
 DUMMY_DOC = """

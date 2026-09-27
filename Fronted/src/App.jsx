@@ -4,6 +4,7 @@ import { ThemeProvider } from "./theme/ThemeContext";
 import Sidebar from "./components/Sidebar";
 import Home from "./pages/Home";
 import Upload from "./pages/Upload";
+import CallTester from "./pages/CallTester";
 import "./index.css";
 
 export default function App() {
@@ -18,6 +19,7 @@ export default function App() {
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/upload" element={<Upload />} />
+              <Route path="/call-test" element={<CallTester />} />
             </Routes>
           </div>
         </div>
