@@ -11,7 +11,7 @@ load_dotenv(Path(__file__).with_name(".env"))
 embedder = SentenceTransformer("all-MiniLM-L6-v2")
 
 pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
-index = pc.Index("voice-assistant-kb")
+index = pc.Index(os.getenv("PINECONE_INDEX_NAME", "voice-assistant-kb"))
 
 def embed(text: str) -> list[float]:
     return embedder.encode(text).tolist()
@@ -30,7 +30,7 @@ def chunk_text(text: str, max_chars: int = 500) -> list[str]:
         chunks.append(" ".join(current))
     return chunks
 
-def upsert_company_doc(company_id: str, doc_text: str, source_name: str):
+def upsert_company_doc(company_id: str, doc_text: str, source_name: str) -> int:
     chunks = chunk_text(doc_text)
     vectors = [
         {
@@ -41,6 +41,7 @@ def upsert_company_doc(company_id: str, doc_text: str, source_name: str):
         for i, chunk in enumerate(chunks)
     ]
     index.upsert(vectors=vectors, namespace=company_id)
+    return len(vectors)
 
 def retrieve_context(company_id: str, question: str, top_k: int = 3) -> str:
     query_vec = embed(question)

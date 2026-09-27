@@ -1,0 +1,84 @@
+:root {
+  --bg: #FBFBF9;
+  --surface: #FFFFFF;
+  --text: #16191E;
+  --text-muted: #5B6270;
+  --border: #E2E5EA;
+  --accent: #1F5F5B;
+  --accent-hover: #164743;
+  --sidebar-width: 15rem;
+}
+
+[data-theme="dark"] {
+  --bg: #14161A;
+  --surface: #1C1F24;
+  --text: #EDEEF0;
+  --text-muted: #9AA1AC;
+  --border: #2C3037;
+  --accent: #4FA79F;
+  --accent-hover: #6BC0B8;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.app-shell { display: flex; min-height: 100vh; }
+
+.main-content {
+  flex: 1;
+  min-width: 0;
+  padding: 3rem 4rem;   /* generous — this is the "space-friendly" ask */
+  max-width: 56rem;
+}
+
+.sidebar-brand-mark {
+  display: none;
+}
+
+@media (max-width: 600px) {
+  .sidebar {
+    width: 4.25rem;
+    flex: 0 0 4.25rem;
+    align-items: center;
+    padding: 1.25rem 0.4rem;
+  }
+
+  .sidebar-brand {
+    margin-bottom: 2rem;
+  }
+
+  .sidebar-brand-full {
+    display: none;
+  }
+
+  .sidebar-brand-mark {
+    display: inline;
+    font-size: 1.2rem;
+  }
+
+  .sidebar-link {
+    justify-content: center;
+    padding: 0.7rem 0.3rem;
+  }
+
+  .sidebar-link span,
+  .theme-toggle span {
+    display: none;
+  }
+
+  .theme-toggle {
+    justify-content: center;
+    padding: 0.65rem;
+  }
+
+  .main-content {
+    padding: 1.5rem 1rem;
+    max-width: none;
+  }
+}
