@@ -36,6 +36,35 @@ def _load_backend_env() -> None:
 
 _load_backend_env()
 
+# --- Logging: file (logs/voicebox.log) + stderr so servers show useful logs ---
+import logging
+from logging.handlers import RotatingFileHandler
+
+LOG_DIR = os.path.join(REPO_ROOT, "logs")
+try:
+    os.makedirs(LOG_DIR, exist_ok=True)
+except OSError:
+    pass
+
+logger = logging.getLogger("voicebox")
+if not logger.handlers:
+    logger.setLevel(logging.INFO)
+    _fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    try:
+        _fh = RotatingFileHandler(
+            os.path.join(LOG_DIR, "voicebox.log"),
+            maxBytes=1_000_000,
+            backupCount=3,
+            encoding="utf-8",
+        )
+        _fh.setFormatter(_fmt)
+        logger.addHandler(_fh)
+    except OSError:
+        pass
+    _sh = logging.StreamHandler(sys.stderr)
+    _sh.setFormatter(_fmt)
+    logger.addHandler(_sh)
+
 STT_MODEL = os.environ.get("STT_MODEL", "base")
 TTS_VOICE = os.environ.get("TTS_VOICE", "en-US-AriaNeural")
 
@@ -175,40 +204,85 @@ def process_voice_turn(
     company_id: str | None, in_path: str, call_id: str
 ) -> dict[str, str | None]:
     """Full loop for one caller utterance. Never raises -- always returns audio if possible."""
+    import time as _time
+
+    t0 = _time.time()
     os.makedirs(SOUNDS_DIR, exist_ok=True)
     call_id = sanitize_call_id(call_id)
+    try:
+        in_size = os.path.getsize(in_path)
+    except OSError:
+        in_size = -1
+    logger.info(
+        "turn start call=%s company=%s in=%s bytes=%d",
+        call_id,
+        company_id,
+        in_path,
+        in_size,
+    )
+
+    def _done(answer: str, transcript: str = "", context: str = "", wav: str | None = None):
+        logger.info(
+            "turn done call=%s reason=%s transcript_chars=%d answer_chars=%d wav=%s elapsed=%.1fs",
+            call_id,
+            answer,
+            len(transcript),
+            len(answer),
+            wav,
+            _time.time() - t0,
+        )
+        return {"transcript": transcript, "answer": answer, "context": context, "wav_path": wav}
 
     if not company_id:
+        logger.warning("turn call=%s: extension not mapped to a company", call_id)
         wav = _speak_fallback(FALLBACK_UNCONFIGURED, call_id)
-        return {
-            "transcript": "",
-            "answer": FALLBACK_UNCONFIGURED,
-            "context": "",
-            "wav_path": wav,
-        }
+        return _done(FALLBACK_UNCONFIGURED, wav=wav)
 
+    t_stt = _time.time()
     try:
-        transcript, _engine = transcribe_audio(in_path)
-    except (FileNotFoundError, ValueError):
+        transcript, engine = transcribe_audio(in_path)
+    except (FileNotFoundError, ValueError) as e:
+        logger.warning("turn call=%s: no audio captured (%s)", call_id, e)
         wav = _speak_fallback(FALLBACK_NO_AUDIO, call_id)
-        return {"transcript": "", "answer": FALLBACK_NO_AUDIO, "context": "", "wav_path": wav}
-    except Exception:
+        return _done(FALLBACK_NO_AUDIO, wav=wav)
+    except Exception as e:
+        logger.warning("turn call=%s: STT failed (%s)", call_id, e)
         wav = _speak_fallback(FALLBACK_NO_SPEECH, call_id)
-        return {"transcript": "", "answer": FALLBACK_NO_SPEECH, "context": "", "wav_path": wav}
+        return _done(FALLBACK_NO_SPEECH, wav=wav)
+    logger.info(
+        "turn call=%s: STT engine=%s chars=%d elapsed=%.1fs text=%r",
+        call_id,
+        engine,
+        len(transcript),
+        _time.time() - t_stt,
+        transcript[:160],
+    )
 
     if not transcript.strip():
+        logger.warning("turn call=%s: STT returned empty text (silence?)", call_id)
         wav = _speak_fallback(FALLBACK_NO_SPEECH, call_id)
-        return {"transcript": "", "answer": FALLBACK_NO_SPEECH, "context": "", "wav_path": wav}
+        return _done(FALLBACK_NO_SPEECH, wav=wav)
 
+    t_kb = _time.time()
     try:
         answer, context = answer_question(company_id, transcript)
-    except Exception:
+    except Exception as e:
+        logger.warning("turn call=%s: RAG/LLM failed (%s)", call_id, e)
         wav = _speak_fallback(FALLBACK_KB_ERROR, call_id)
-        return {"transcript": transcript, "answer": FALLBACK_KB_ERROR, "context": "", "wav_path": wav}
+        return _done(FALLBACK_KB_ERROR, transcript=transcript, wav=wav)
+    logger.info(
+        "turn call=%s: RAG+LLM answer_chars=%d context_chars=%d elapsed=%.1fs",
+        call_id,
+        len(answer or ""),
+        len(context or ""),
+        _time.time() - t_kb,
+    )
     if not (answer or "").strip():
+        logger.warning("turn call=%s: LLM returned empty answer", call_id)
         answer = FALLBACK_KB_ERROR
 
     wav: str | None
+    t_tts = _time.time()
     try:
         tmp_mp3 = os.path.join(SOUNDS_DIR, f"tmp_{call_id}.mp3")
         synthesize_to_mp3(answer, tmp_mp3)
@@ -217,9 +291,13 @@ def process_voice_turn(
             os.remove(tmp_mp3)
         except OSError:
             pass
-    except Exception:
+        logger.info(
+            "turn call=%s: TTS wav=%s elapsed=%.1fs", call_id, wav, _time.time() - t_tts
+        )
+    except Exception as e:
+        logger.warning("turn call=%s: TTS failed (%s)", call_id, e)
         wav = None
-    return {"transcript": transcript, "answer": answer, "context": context, "wav_path": wav}
+    return _done(answer, transcript=transcript, context=context, wav=wav)
 
 
 def sweep_old_files(max_age_seconds: int = 3600) -> int:

@@ -38,10 +38,30 @@ docker exec asterisk asterisk -rx "dialplan reload"
 
 ## Call flow (extensions 1001/1002)
 
-Answer → Playback welcome (`sounds/welcome_<ext>.wav`) → Record `sounds/in_<UNIQUEID>.wav` (10 s max) → FastAGI
+Answer → Playback welcome (`sounds/welcome_<ext>.wav`) → beep → Record `sounds/in_<UNIQUEID>.wav` (10 s max) → Playback `sounds/thinking.wav` → FastAGI
 `agi://host.docker.internal:4573/voice` → STT → RAG (`COMPANY_MAP`) → Ollama
 → edge-tts → 8 kHz wav `sounds/out_<UNIQUEID>.wav` → Playback → Hangup.
 Every failure still plays a spoken fallback so callers never hear silence.
+
+## Logs
+
+Pipeline stages, timings, transcripts, and fallback reasons go to
+`logs/voicebox.log` (rotating, 1 MB x3) and stderr. Watch live with:
+
+```powershell
+Get-Content logs\voicebox.log -Wait -Tail 20
+```
+
+Asterisk-side progress: `docker logs asterisk --since 5m`.
+
+## SIP/RTP notes (Docker Desktop)
+
+Zoiper runs on the Windows host while Asterisk lives in a container, so the
+transport advertises `external_media_address` = host LAN IP (published UDP
+10000-10100 forwards the audio back in). If the host IP changes (new network /
+DHCP), update it in `asterisk/config/pjsip.conf` and run
+`docker exec asterisk asterisk -rx "pjsip reload"`. Zoiper must stay
+registered after a `pjsip reload` (no container restart needed).
 
 ## Tests
 

@@ -45,10 +45,8 @@ class VoiceHandler(socketserver.StreamRequestHandler):
             extension = env.get("agi_arg_1", "")
             call_id = voice.sanitize_call_id(env.get("agi_arg_2", ""))
             company = voice.company_for_extension(extension)
-            print(
-                f"[agi] extension={extension} call={call_id} company={company}",
-                file=sys.stderr,
-                flush=True,
+            voice.logger.info(
+                "agi call extension=%s call=%s company=%s", extension, call_id, company
             )
 
             result = voice.process_voice_turn(company, voice.in_wav_path(call_id), call_id)
@@ -80,6 +78,7 @@ def main(argv: list[str] | None = None) -> int:
         server.allow_reuse_address = True
         server.server_bind()
         server.server_activate()
+        voice.logger.info("agi listening on %s:%d", args.host, args.port)
         print(f"[agi] listening on {args.host}:{args.port}", flush=True)
         try:
             server.serve_forever()
