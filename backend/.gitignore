@@ -1,0 +1,21 @@
+# Environment files (keep the safe template)
+.env
+.env.*
+!.env.example
+
+# Local Python environments and generated files
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Common local credential and private-key files
+secrets/
+*credentials*.json
+*service-account*.json
+*.pem
+*.key
+*.p12
+*.pfx
+*.secret
+*.secrets

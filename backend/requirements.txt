@@ -1,0 +1,9 @@
+sentence-transformers
+pinecone
+python-dotenv
+ollama
+fastapi
+uvicorn[standard]
+python-multipart
+pypdf
+python-docx
