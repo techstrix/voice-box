@@ -1,0 +1,37 @@
+:root {
+  --bg: #FBFBF9;
+  --surface: #FFFFFF;
+  --text: #16191E;
+  --text-muted: #5B6270;
+  --border: #E2E5EA;
+  --accent: #1F5F5B;
+  --accent-hover: #164743;
+  --sidebar-width: 15rem;
+}
+
+[data-theme="dark"] {
+  --bg: #14161A;
+  --surface: #1C1F24;
+  --text: #EDEEF0;
+  --text-muted: #9AA1AC;
+  --border: #2C3037;
+  --accent: #4FA79F;
+  --accent-hover: #6BC0B8;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.app-shell { display: flex; min-height: 100vh; }
+
+.main-content {
+  flex: 1;
+  padding: 3rem 4rem;   /* generous — this is the "space-friendly" ask */
+  max-width: 56rem;
+}
