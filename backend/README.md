@@ -38,10 +38,8 @@ docker exec asterisk asterisk -rx "dialplan reload"
 
 ## Call flow (extensions 1001/1002)
 
-Answer → Playback welcome (`sounds/welcome_<ext>.wav`) → beep → Record `sounds/in_<UNIQUEID>.wav` (10 s max) → Playback `sounds/thinking.wav` → FastAGI
-`agi://host.docker.internal:4573/voice` → STT → RAG (`COMPANY_MAP`) → Ollama
-→ edge-tts → 8 kHz wav `sounds/out_<UNIQUEID>.wav` → Playback → Hangup.
-Every failure still plays a spoken fallback so callers never hear silence.
+Answer → Playback welcome (`sounds/welcome_<ext>.wav`) → beep → Record `sounds/in_<UNIQUEID>.wav` (10 s max, `#` ends early) → FastAGI `start` (pipeline runs in a background thread) → loop `Playback(thinking)` + FastAGI `check` (up to 5 rounds ≈ 20 s) → Playback reply or `sounds/timeout.wav` → Hangup.
+`sounds/out_<UNIQUEID>.wav` is the 8 kHz reply. Every failure still plays a spoken fallback so callers never hear silence.
 
 ## Logs
 

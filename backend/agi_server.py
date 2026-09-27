@@ -1,12 +1,14 @@
 """Minimal stdlib-only FastAGI server for the Asterisk voice loop.
 
-Dialplan calls:  AGI(agi://host.docker.internal:4573/voice,${EXTEN},${UNIQUEID})
-after recording the caller to sounds/in_<UNIQUEID>.wav.
-
-The server runs the shared pipeline (voice.process_voice_turn) against that
-file, writes sounds/out_<UNIQUEID>.wav, and sets channel variables:
-  VB_STATUS = ok | error        VB_REPLY  = out_<UNIQUEID> (wav basename, no ext)
-The dialplan then does Playback(custom/${VB_REPLY}).
+Two modes (first AGI argument):
+  start: AGI(agi://host.docker.internal:4573/voice,start,${EXTEN},${UNIQUEID})
+         Launches process_voice_turn in a background thread and returns at
+         once (VB_STATUS=started) so the dialplan can keep the caller
+         entertained while STT/RAG/TTS works (~20s worst case).
+  check: AGI(agi://host.docker.internal:4573/voice,check,${EXTEN},${UNIQUEID})
+         Polls the background job: VB_STATUS=wait | ok | error, and on
+         success VB_REPLY=out_<UNIQUEID> (wav basename, no ext) for
+         Playback(custom/${VB_REPLY}).
 
 Run (host venv, alongside the FastAPI backend):
     python agi_server.py
@@ -17,17 +19,77 @@ import argparse
 import os
 import socketserver
 import sys
+import threading
 import traceback
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import voice
 
+_jobs: dict[str, dict] = {}
+_jobs_lock = threading.Lock()
+
 
 def _send(rfile, wfile, command: str) -> str:
     wfile.write(command.encode() + b"\n")
     wfile.flush()
     return rfile.readline().decode(errors="replace").strip()
+
+
+def _run_job(call_id: str, company: str | None) -> None:
+    try:
+        result = voice.process_voice_turn(company, voice.in_wav_path(call_id), call_id)
+    except Exception as error:  # noqa: BLE001 - never leave a job hanging
+        result = {"transcript": "", "answer": "", "context": "", "wav_path": None,
+                  "error": str(error)}
+    with _jobs_lock:
+        job = _jobs.get(call_id)
+        if job is not None:
+            job["result"] = result
+            job["done"].set()
+
+
+def _handle_start(env: dict[str, str]) -> dict[str, str]:
+    extension = env.get("agi_arg_2", "")
+    call_id = voice.sanitize_call_id(env.get("agi_arg_3", ""))
+    company = voice.company_for_extension(extension)
+    voice.logger.info(
+        "agi start extension=%s call=%s company=%s", extension, call_id, company
+    )
+    with _jobs_lock:
+        _jobs[call_id] = {"done": threading.Event(), "result": None}
+        # Bound concurrent background turns (GPU serializes anyway).
+        while len(_jobs) > 20:
+            oldest = next(iter(_jobs))
+            if _jobs[oldest]["done"].is_set():
+                del _jobs[oldest]
+            else:
+                break
+    worker = threading.Thread(
+        target=_run_job, args=(call_id, company), daemon=True
+    )
+    worker.start()
+    return {"VB_STATUS": "started", "VB_REPLY": ""}
+
+
+def _handle_check(env: dict[str, str]) -> dict[str, str]:
+    call_id = voice.sanitize_call_id(env.get("agi_arg_3", ""))
+    with _jobs_lock:
+        job = _jobs.get(call_id)
+    if job is None or not job["done"].is_set():
+        return {"VB_STATUS": "wait", "VB_REPLY": ""}
+    result = job.get("result") or {}
+    wav_path = result.get("wav_path")
+    if wav_path:
+        reply = os.path.splitext(os.path.basename(wav_path))[0]
+        voice.logger.info("agi check call=%s ready reply=%s", call_id, reply)
+        with _jobs_lock:
+            _jobs.pop(call_id, None)
+        return {"VB_STATUS": "ok", "VB_REPLY": reply}
+    voice.logger.warning("agi check call=%s finished without audio", call_id)
+    with _jobs_lock:
+        _jobs.pop(call_id, None)
+    return {"VB_STATUS": "error", "VB_REPLY": ""}
 
 
 class VoiceHandler(socketserver.StreamRequestHandler):
@@ -42,21 +104,14 @@ class VoiceHandler(socketserver.StreamRequestHandler):
                     key, _, value = line.partition(":")
                     env[key.strip()] = value.strip()
 
-            extension = env.get("agi_arg_1", "")
-            call_id = voice.sanitize_call_id(env.get("agi_arg_2", ""))
-            company = voice.company_for_extension(extension)
-            voice.logger.info(
-                "agi call extension=%s call=%s company=%s", extension, call_id, company
-            )
+            mode = (env.get("agi_arg_1", "") or "").strip().lower()
+            if mode == "check":
+                variables = _handle_check(env)
+            else:
+                variables = _handle_start(env)
 
-            result = voice.process_voice_turn(company, voice.in_wav_path(call_id), call_id)
-            reply_file = ""
-            if result.get("wav_path"):
-                reply_file = os.path.splitext(os.path.basename(result["wav_path"]))[0]
-            status = "ok" if reply_file else "error"
-
-            _send(self.rfile, self.wfile, f'SET VARIABLE "VB_STATUS" "{status}"')
-            _send(self.rfile, self.wfile, f'SET VARIABLE "VB_REPLY" "{reply_file}"')
+            for key, value in variables.items():
+                _send(self.rfile, self.wfile, f'SET VARIABLE "{key}" "{value}"')
             voice.sweep_old_files()
         except Exception:
             traceback.print_exc()
