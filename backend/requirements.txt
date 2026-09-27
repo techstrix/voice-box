@@ -7,3 +7,8 @@ uvicorn[standard]
 python-multipart
 pypdf
 python-docx
+# Voice loop (Windows host venv, NVIDIA GPU)
+faster-whisper
+edge-tts
+nvidia-cublas-cu12
+nvidia-cudnn-cu12

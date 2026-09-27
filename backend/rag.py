@@ -1,20 +1,43 @@
-import os
+"""Pinecone RAG helpers, namespaced per company.
+
+Heavy third-party clients (embedding model, Pinecone) are created lazily so
+that importing this module -- and the FastAPI app -- never pays model-load
+cost or requires credentials until an embedding/index call actually runs.
+Public function signatures are unchanged.
+"""
+from __future__ import annotations
+
+from functools import lru_cache
 from pathlib import Path
 
-from dotenv import load_dotenv
-from sentence_transformers import SentenceTransformer
-from pinecone import Pinecone
 
-load_dotenv(Path(__file__).with_name(".env"))
+@lru_cache(maxsize=1)
+def _get_embedder():
+    from sentence_transformers import SentenceTransformer
 
-# Load the local embedding model
-embedder = SentenceTransformer("all-MiniLM-L6-v2")
+    return SentenceTransformer("all-MiniLM-L6-v2")
 
-pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
-index = pc.Index(os.getenv("PINECONE_INDEX_NAME", "voice-assistant-kb"))
+
+@lru_cache(maxsize=1)
+def _get_index():
+    import os
+
+    from dotenv import load_dotenv
+    from pinecone import Pinecone
+
+    load_dotenv(Path(__file__).with_name(".env"))
+    api_key = os.getenv("PINECONE_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "PINECONE_API_KEY is not set. Copy backend/.env.example to backend/.env."
+        )
+    pc = Pinecone(api_key=api_key)
+    return pc.Index(os.getenv("PINECONE_INDEX_NAME", "voice-assistant-kb"))
+
 
 def embed(text: str) -> list[float]:
-    return embedder.encode(text).tolist()
+    return _get_embedder().encode(text).tolist()
+
 
 def chunk_text(text: str, max_chars: int = 500) -> list[str]:
     words = text.split()
@@ -30,6 +53,7 @@ def chunk_text(text: str, max_chars: int = 500) -> list[str]:
         chunks.append(" ".join(current))
     return chunks
 
+
 def upsert_company_doc(company_id: str, doc_text: str, source_name: str) -> int:
     chunks = chunk_text(doc_text)
     vectors = [
@@ -40,12 +64,13 @@ def upsert_company_doc(company_id: str, doc_text: str, source_name: str) -> int:
         }
         for i, chunk in enumerate(chunks)
     ]
-    index.upsert(vectors=vectors, namespace=company_id)
+    _get_index().upsert(vectors=vectors, namespace=company_id)
     return len(vectors)
+
 
 def retrieve_context(company_id: str, question: str, top_k: int = 3) -> str:
     query_vec = embed(question)
-    results = index.query(
+    results = _get_index().query(
         vector=query_vec,
         top_k=top_k,
         namespace=company_id,

@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { UploadCloud, Building2, Sun, Moon } from "lucide-react";
+import { UploadCloud, Building2, Phone, Sun, Moon } from "lucide-react";
 import { useTheme } from "../theme/ThemeContext";
 import "./Sidebar.css";
 
@@ -17,6 +17,11 @@ export default function Sidebar({ onCompanyClick }) {
         <NavLink to="/upload" className="sidebar-link" aria-label="Upload" title="Upload">
           <UploadCloud size={20} aria-hidden="true" />
           <span>Upload</span>
+        </NavLink>
+
+        <NavLink to="/call-test" className="sidebar-link" aria-label="Call test" title="Call test">
+          <Phone size={20} aria-hidden="true" />
+          <span>Call test</span>
         </NavLink>
 
         <button className="sidebar-link sidebar-link-button" onClick={onCompanyClick} aria-label="Company" title="Company">

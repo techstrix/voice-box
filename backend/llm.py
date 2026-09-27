@@ -1,11 +1,8 @@
 import os
 
-import ollama
-
 # Matched to your installed model
 OLLAMA_MODEL = "llama3.2:1b"
 OLLAMA_CLIENT_HOST = os.getenv("OLLAMA_CLIENT_HOST", "http://127.0.0.1:11434")
-ollama_client = ollama.Client(host=OLLAMA_CLIENT_HOST)
 
 SYSTEM_PROMPT = """You are a helpful, friendly phone customer service agent for {company_name}.
 Answer the customer's question using ONLY the context provided below.
@@ -18,6 +15,9 @@ Context:
 """
 
 def generate_answer(company_name: str, context: str, question: str) -> str:
+    import ollama
+
+    ollama_client = ollama.Client(host=OLLAMA_CLIENT_HOST)
     response = ollama_client.chat(
         model=OLLAMA_MODEL,
         messages=[

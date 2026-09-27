@@ -1,0 +1,16 @@
+services:
+  asterisk:
+    image: andrius/asterisk:stable
+    container_name: asterisk
+    ports:
+      - "5060:5060/udp"
+      - "5060:5060/tcp"
+      - "10000-10100:10000-10100/udp"   # RTP media range
+    volumes:
+      - ./asterisk/config:/etc/asterisk
+      - ./asterisk/sounds:/var/lib/asterisk/sounds/custom
+    restart: unless-stopped
+  # NOTE: the Python backend (FastAPI + FastAGI) runs on the Windows host in
+  # .\venv so it can use the NVIDIA GPU. Do not add a backend service here
+  # without GPU passthrough + a Dockerfile. The dialplan reaches the host via
+  # host.docker.internal:8000 (HTTP, unused by dialplan) and :4573 (FastAGI).
