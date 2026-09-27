@@ -23,6 +23,19 @@ SOUNDS_DIR = os.path.join(REPO_ROOT, "asterisk", "sounds")
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
 
+
+def _load_backend_env() -> None:
+    """Load backend/.env so COMPANY_MAP/STT_MODEL/TTS_VOICE work for host-run servers."""
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv(os.path.join(REPO_ROOT, "backend", ".env"), override=False)
+    except Exception:
+        pass
+
+
+_load_backend_env()
+
 STT_MODEL = os.environ.get("STT_MODEL", "base")
 TTS_VOICE = os.environ.get("TTS_VOICE", "en-US-AriaNeural")
 
